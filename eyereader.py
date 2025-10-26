@@ -1,118 +1,92 @@
 import cv2
 import mediapipe as mp
-import pyautogui
 import time
 import numpy as np
 
-# --- Ініціалізація Mediapipe ---
+# MediaPipe setup
 mp_face_mesh = mp.solutions.face_mesh
-face_mesh = mp_face_mesh.FaceMesh(refine_landmarks=True, max_num_faces=1)
-mp_drawing = mp.solutions.drawing_utils
-mp_drawing_styles = mp.solutions.drawing_styles
+face_mesh = mp_face_mesh.FaceMesh(refine_landmarks=True)
 
-# --- Індекси ключових точок ---
-LEFT_IRIS = [474, 475, 476, 477]  # координати райдужки лівого ока
-LEFT_EYE_LID_TOP = 159
-LEFT_EYE_LID_BOTTOM = 145
+# Parameters
+scroll_speed = 0.3  # base scroll speed
+neutral_iris_y = None
+text_pos = 0
+paused = False
 
-# --- Стан програми ---
-state = {
-    'threshold_up': None,
-    'threshold_down': None,
-    'cooldown_frames': 10,
-    'counter': 0
-}
+# Create dummy text for demonstration
+text = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. " * 50
+text_lines = text.split(" ")
+font = cv2.FONT_HERSHEY_SIMPLEX
 
-# --- Відкриваємо камеру ---
+# Camera setup
 cap = cv2.VideoCapture(0)
 
-def get_relative_iris_y(landmarks):
-    iris_y = sum([landmarks[i].y for i in LEFT_IRIS]) / len(LEFT_IRIS)
-    top = landmarks[LEFT_EYE_LID_TOP].y
-    bottom = landmarks[LEFT_EYE_LID_BOTTOM].y
-    return (iris_y - top) / (bottom - top)
+def draw_text_window(frame, pos):
+    h, w, _ = frame.shape
+    overlay = np.ones_like(frame) * 255
+    line_height = 25
+    start_idx = int(pos)
+    end_idx = min(start_idx + 20, len(text_lines))
+    y = 50
+    for i in range(start_idx, end_idx):
+        cv2.putText(overlay, text_lines[i], (40, y), font, 0.7, (0, 0, 0), 2)
+        y += line_height
+    blended = cv2.addWeighted(frame, 0.3, overlay, 0.7, 0)
+    return blended
 
-def swipe(direction):
-    if direction == 'down':
-        pyautogui.press('pgdn')
-        print("Swipe DOWN")
-    elif direction == 'up':
-        pyautogui.press('pgup')
-        print("Swipe UP")
+def get_iris_y(landmarks, w, h):
+    left_iris = landmarks[468]
+    right_iris = landmarks[473]
+    avg_y = (left_iris.y + right_iris.y) / 2
+    return avg_y
 
-# --- Калібрування ---
-def calibrate():
-    points = ['CENTER', 'UP', 'DOWN']
-    iris_data = {'CENTER': [], 'UP': [], 'DOWN': []}
-
-    for p in points:
-        print(f"Сфокусуйтесь на точку: {p}. Натисніть 's' щоб зафіксувати")
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                continue
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            results = face_mesh.process(rgb)
-
-            if results.multi_face_landmarks:
-                landmarks = results.multi_face_landmarks[0].landmark
-                iris_rel_y = get_relative_iris_y(landmarks)
-                cv2.putText(frame, f"Точка: {p}, Iris Y: {iris_rel_y:.3f}", (50,50),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
-            cv2.imshow("Calibration", frame)
-            key = cv2.waitKey(1)
-            if key & 0xFF == ord('s'):
-                iris_data[p].append(iris_rel_y)
-                print(f"Зафіксовано для {p}: {iris_rel_y:.3f}")
-                break
-            elif key & 0xFF == ord('q'):
-                exit()
-
-    cv2.destroyWindow("Calibration")
-
-    # Обчислюємо середнє для порогів
-    state['threshold_up'] = np.mean(iris_data['UP']) - np.mean(iris_data['CENTER'])
-    state['threshold_down'] = np.mean(iris_data['CENTER']) - np.mean(iris_data['DOWN'])
-    print(f"Калібрування завершено. Поріг UP={state['threshold_up']:.3f}, DOWN={state['threshold_down']:.3f}")
-
-# --- Функція для визначення напрямку ---
-def check_gaze(iris_y):
-    if iris_y - center_y > state['threshold_up']:
-        return 'up'
-    elif center_y - iris_y > state['threshold_down']:
-        return 'down'
-    return None
-
-# --- Основний цикл ---
-calibrate()
-center_y = (state['threshold_up'] + state['threshold_down']) / 2  # приблизне центр
+def eyes_closed(landmarks):
+    # eye aspect ratio to detect blink
+    left_top = landmarks[159].y
+    left_bottom = landmarks[145].y
+    ratio = (left_bottom - left_top)
+    return ratio < 0.01  # tweak if too sensitive
 
 while True:
     ret, frame = cap.read()
     if not ret:
         break
-
+    frame = cv2.flip(frame, 1)
+    h, w, _ = frame.shape
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    results = face_mesh.process(rgb)
+    res = face_mesh.process(rgb)
 
-    if results.multi_face_landmarks:
-        landmarks = results.multi_face_landmarks[0].landmark
-        iris_rel_y = get_relative_iris_y(landmarks)
+    if res.multi_face_landmarks:
+        for face_landmarks in res.multi_face_landmarks:
+            landmarks = face_landmarks.landmark
+            iris_y = get_iris_y(landmarks, w, h)
 
-        if state['counter'] == 0:
-            direction = check_gaze(iris_rel_y)
-            if direction:
-                swipe(direction)
-                state['counter'] = state['cooldown_frames']
+            # Draw iris dots
+            for i in [468, 473]:
+                pt = landmarks[i]
+                cv2.circle(frame, (int(pt.x * w), int(pt.y * h)), 2, (0, 255, 0), -1)
 
-        if state['counter'] > 0:
-            state['counter'] -= 1
+            # Calibration (set neutral when user looks straight)
+            if neutral_iris_y is None:
+                neutral_iris_y = iris_y
 
-        cv2.putText(frame, f"Iris Y: {iris_rel_y:.3f}", (10, 60),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
+            # Eye close detection
+            if eyes_closed(landmarks):
+                paused = True
+                cv2.putText(frame, "PAUSED (eyes closed)", (30, 50), font, 0.7, (0, 0, 255), 2)
+            else:
+                paused = False
 
-    cv2.imshow("Eye Tracker", frame)
-    if cv2.waitKey(1) & 0xFF == ord('q'):
+            if not paused:
+                delta = iris_y - neutral_iris_y
+                if abs(delta) > 0.005:  # small dead zone
+                    text_pos += delta * 100 * scroll_speed
+                    text_pos = max(0, min(len(text_lines) - 20, text_pos))
+
+    output = draw_text_window(frame, text_pos)
+    cv2.imshow("Eye Reader Focus Mode", output)
+
+    if cv2.waitKey(1) & 0xFF == 27:
         break
 
 cap.release()
