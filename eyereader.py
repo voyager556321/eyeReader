@@ -3,6 +3,10 @@ import mediapipe as mp
 import pyautogui
 import time
 
+IRIS_Y_UPPER = -0.08
+
+IRIS_Y_DOWN = -0.24
+
 # Ініціалізація Mediapipe Face Mesh
 mp_face_mesh = mp.solutions.face_mesh
 face_mesh = mp_face_mesh.FaceMesh(refine_landmarks=True, max_num_faces=1)
@@ -36,18 +40,22 @@ def get_relative_iris_y(landmarks):
     # нормалізована відносна позиція райдужки
     return (iris_y - top) / (bottom - top)
 
-def eyes_closed(landmarks):
-    # простий показник закриття очей: відстань між верхньою та нижньою повікою
-    eye_height = landmarks[LEFT_EYE_LID_BOTTOM].y - landmarks[LEFT_EYE_LID_TOP].y
-    return eye_height < 0.02
+# def check_gaze(rel_y, neutral, threshold):
+#     diff = rel_y - neutral
+#     if diff > threshold:
+#         return 'up'
+#     elif diff < -threshold:
+#         return 'down'
+#     return None
 
-def check_gaze(rel_y, neutral, threshold):
-    diff = rel_y - neutral
-    if diff > threshold:
+def check_gaze(rel_y):
+    if rel_y > IRIS_Y_UPPER:
         return 'up'
-    elif diff < -threshold:
+    elif rel_y > IRIS_Y_DOWN:
         return 'down'
     return None
+
+
 
 def swipe(direction):
     """Виконує Page Up/Down залежно від напрямку погляду"""
@@ -57,6 +65,25 @@ def swipe(direction):
     elif direction == 'up':
         pyautogui.press('pgup')
         print("Eye move UP detected → Page Up")
+        
+neutral_samples = []
+calibration_time = 3  # секунди
+start_time = time.time()
+
+while time.time() - start_time < calibration_time:
+    ret, frame = cap.read()
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    results = face_mesh.process(rgb)
+    if results.multi_face_landmarks:
+        landmarks = results.multi_face_landmarks[0].landmark
+        iris_rel_y = get_relative_iris_y(landmarks)
+        neutral_samples.append(iris_rel_y)
+    cv2.imshow("Calibration", frame)
+    cv2.waitKey(1)
+
+state['neutral_y'] = sum(neutral_samples) / len(neutral_samples)
+print(f"Calibrated neutral_y: {state['neutral_y']:.3f}")
+
 
 while True:
     ret, frame = cap.read()
@@ -85,11 +112,6 @@ while True:
                 y = int(landmarks[idx].y * frame.shape[0])
                 cv2.circle(frame, (x, y), 2, (0, 255, 0), -1)
 
-            if eyes_closed(landmarks):
-                cv2.putText(frame, "Eyes closed → swipe paused", (10, 30),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
-                continue
-
             # Відносна позиція райдужки
             iris_rel_y = get_relative_iris_y(landmarks)
 
@@ -98,7 +120,9 @@ while True:
                 state['neutral_y'] = iris_rel_y
 
             if state['counter'] == 0:
-                direction = check_gaze(iris_rel_y, state['neutral_y'], state['threshold'])
+                # direction = check_gaze(iris_rel_y, state['neutral_y'], state['threshold'])
+
+                direction = check_gaze(iris_rel_y)
                 if direction:
                     swipe(direction)
                     print(f"Eye move {direction.upper()} detected → Swipe {direction}")
