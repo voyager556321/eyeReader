@@ -1,6 +1,9 @@
 # Eye Reader PDF
 
 Eye Reader PDF is a Python application that allows you to read PDF books using eye tracking. By using your webcam, the program detects eye movement and scrolls the PDF vertically based on where your eyes are looking. You can also pause scrolling by closing your eyes.
+## Demo preview
+Here’s how Eye Reader PDF works in real time:
+![Eye Reader Demo](https://github.com/voyager556321/eyeReader/blob/main/Screenshot%20from%202025-10-29%2022-45-59.png)
 
 ## Features
 
@@ -22,19 +25,18 @@ Eye Reader PDF is a Python application that allows you to read PDF books using e
 
 Install the dependencies using pip:
 
-``bash
+```bash
 pip install opencv-python mediapipe PyMuPDF Pillow numpy
-
+```
 
 ## Usage
 
 Run the script from the command line with a PDF file as an argument:
 
-``bash
+```bash
 python eyereader_pdf.py your_book.pdf
-
-
-
+```
+Keys:
 - Escape (Esc) key: Exit the program.
 
 ## How It Works
@@ -58,4 +60,17 @@ python eyereader_pdf.py your_book.pdf
 
 - `scroll_multiplier`: Adjust this value to change the scroll sensitivity. Default is 250.
 - `window_w` and `window_h`: Dimensions of the display window. Default is 800×600.
+## Notes
+   - Uses landmarks `468` and `473` for iris center tracking, and `145/159` for eye-closure detection.
+   - Works best in good lighting and with the face centered in the camera frame.
+   - Large PDFs may consume significant RAM since all pages are stacked.
+You can lower the resolution by using:
+```bash
+page.get_pixmap(matrix=fitz.Matrix(0.5, 0.5))
+```
+## Example Output
+   When running, a window titled “Eye Reader PDF Mode” will appear showing:
+   - The current visible portion of the PDF.
+   - A live webcam thumbnail in the top-left corner.
+   - Smooth vertical scrolling following your gaze.
 
