@@ -3,6 +3,9 @@
 Eye Reader PDF is a Python application that allows you to read PDF books using eye tracking. By using your webcam, the program detects eye movement and scrolls the PDF vertically based on where your eyes are looking. You can also pause scrolling by closing your eyes.
 ## Demo preview
 Here’s how Eye Reader PDF works in real time:
+
+
+
 ![Eye Reader Demo](https://github.com/voyager556321/eyeReader/blob/main/Screenshot%20from%202025-10-29%2022-45-59.png)
 
 ## Features
