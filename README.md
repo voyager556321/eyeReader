@@ -37,7 +37,7 @@ pip install opencv-python mediapipe PyMuPDF Pillow numpy
 Run the script from the command line with a PDF file as an argument:
 
 ```bash
-python eyereader_pdf.py your_book.pdf
+python eyereaderpdf.py your_book.pdf
 ```
 Keys:
 - Escape (Esc) key: Exit the program.
